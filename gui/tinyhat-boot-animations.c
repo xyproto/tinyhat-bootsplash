@@ -48,8 +48,22 @@ static const char *preview_dir;
 
 static const char *data_dir(void)
 {
+	static char *dir;
 	const char *d = g_getenv("TINYHAT_BOOTSPLASH_DATA");
-	return d && *d ? d : DATADIR;
+	if (d && *d)
+		return d;
+	if (!dir) {
+		char *exe = g_file_read_link("/proc/self/exe", NULL), *here = exe ? g_path_get_dirname(exe) : NULL;
+		char *anims = here ? g_build_filename(here, "animations", NULL) : NULL,
+		     *runtime = here ? g_build_filename(here, "runtime", "anim.h", NULL) : NULL;
+		dir = anims && g_file_test(anims, G_FILE_TEST_IS_DIR) && g_file_test(runtime, G_FILE_TEST_EXISTS) ? g_strdup(here)
+														: g_strdup(DATADIR);
+		g_free(exe);
+		g_free(here);
+		g_free(anims);
+		g_free(runtime);
+	}
+	return dir;
 }
 
 static const char *state_dir(void)
@@ -246,29 +260,53 @@ static gboolean copy_sources(const char *from, const char *to, GError **err)
 	return TRUE;
 }
 
-static const char *terminals[][3] = {
-	{ "foot", NULL, NULL },	       { "xdg-terminal-exec", NULL, NULL }, { "kitty", NULL, NULL },
-	{ "alacritty", "-e", NULL },   { "wezterm", "start", "--" },	    { "konsole", "-e", NULL },
-	{ "gnome-terminal", "--", NULL }, { "xfce4-terminal", "-x", NULL }, { "xterm", "-e", NULL },
+static const char *terminals[][4] = {
+	{ "foot", "", NULL, NULL },	       { "xdg-terminal-exec", "", NULL, NULL }, { "kitty", "", NULL, NULL },
+	{ "alacritty", "", "-e", NULL },   { "wezterm", "", "start", "--" },	      { "konsole", "", "-e", NULL },
+	{ "gnome-terminal", "", "--", NULL }, { "xfce4-terminal", "", "-x", NULL }, { "xterm", "", "-e", NULL },
 };
+
+static const char *desktop_terminal(void)
+{
+	const char *desktop = g_getenv("XDG_CURRENT_DESKTOP");
+	if (!desktop)
+		return NULL;
+	if (strstr(desktop, "XFCE"))
+		return "xfce4-terminal";
+	if (strstr(desktop, "KDE"))
+		return "konsole";
+	if (strstr(desktop, "GNOME"))
+		return "gnome-terminal";
+	if (strstr(desktop, "dwl") || strstr(desktop, "sway"))
+		return "foot";
+	return NULL;
+}
+
+static gboolean terminal_usable(const char *name)
+{
+	return strcmp(name, "foot") || g_getenv("WAYLAND_DISPLAY");
+}
 
 static void open_editor(const char *dir)
 {
-	const char *term = g_getenv("TERMINAL");
+	const char *term = g_getenv("TERMINAL"), *preferred = desktop_terminal();
 	char *found = NULL;
 	GPtrArray *argv = g_ptr_array_new();
 	GError *err = NULL;
 	if (term && *term && (found = g_find_program_in_path(term))) {
 		g_ptr_array_add(argv, found);
 		g_ptr_array_add(argv, "-e");
-	} else {
-		for (size_t i = 0; i < G_N_ELEMENTS(terminals) && !found; i++)
+	}
+	for (int pass = 0; pass < 2 && !found; pass++)
+		for (size_t i = 0; i < G_N_ELEMENTS(terminals) && !found; i++) {
+			if ((pass == 0 && (!preferred || strcmp(preferred, terminals[i][0]))) || !terminal_usable(terminals[i][0]))
+				continue;
 			if ((found = g_find_program_in_path(terminals[i][0]))) {
 				g_ptr_array_add(argv, found);
-				for (int j = 1; j < 3 && terminals[i][j]; j++)
+				for (int j = 2; j < 4 && terminals[i][j]; j++)
 					g_ptr_array_add(argv, (char *)terminals[i][j]);
 			}
-	}
+		}
 	if (!found) {
 		status("No terminal program was found for opening Orbiton");
 		g_ptr_array_free(argv, TRUE);
@@ -280,6 +318,10 @@ static void open_editor(const char *dir)
 	if (!g_spawn_async(dir, (char **)argv->pdata, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, &err)) {
 		status("Could not open Orbiton: %s", err->message);
 		g_error_free(err);
+	} else {
+		char *name = g_path_get_basename(dir);
+		status("Opened %s in Orbiton. Press Build here when it is saved", name);
+		g_free(name);
 	}
 	g_free(found);
 	g_ptr_array_free(argv, TRUE);
@@ -380,8 +422,12 @@ static void activate_done(GObject *src, GAsyncResult *res, gpointer data)
 static void set_active(Anim *a)
 {
 	GError *err = NULL;
-	char *helper = g_find_program_in_path("tinyhat-bootsplash-activate");
+	char *helper = g_build_filename(data_dir(), "scripts", "tinyhat-bootsplash-activate", NULL);
 	GSubprocess *p;
+	if (!g_file_test(helper, G_FILE_TEST_IS_EXECUTABLE)) {
+		g_free(helper);
+		helper = g_find_program_in_path("tinyhat-bootsplash-activate");
+	}
 	if (!helper) {
 		status("tinyhat-bootsplash-activate was not found");
 		return;
@@ -417,7 +463,9 @@ static void on_edit(GtkButton *b, gpointer d)
 		char *dir = duplicate(a);
 		if (!dir)
 			return;
-		status("Built-in animations are read-only, so a copy was made to edit");
+		char *copy = g_path_get_basename(dir);
+		status("Built-in animations can not be changed, so the copy %s was opened instead", copy);
+		g_free(copy);
 		open_editor(dir);
 		char *name = g_path_get_basename(dir);
 		build(name, dir);
@@ -554,7 +602,7 @@ static void scan(const char *parent, gboolean system)
 				g_free(exe);
 				exe = g_build_filename(LIBDIR, "animations", name, NULL);
 			}
-			add_anim(name, dir, exe, system);
+			add_anim(name, dir, exe, system && access(dir, W_OK) != 0);
 			g_free(exe);
 		}
 		g_free(dir);
