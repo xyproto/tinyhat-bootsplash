@@ -24,6 +24,7 @@
 #define BOOT_TICKS 50
 #define SHUTDOWN_TICKS 25
 #define TIMEOUT_MS 300
+#define DEFAULT_ANIMATION "tinyhat"
 
 typedef struct {
 	GPid pid;
@@ -32,7 +33,7 @@ typedef struct {
 
 typedef struct {
 	char *name, *dir, *exe;
-	gboolean system;
+	gboolean system, is_default;
 	Runner boot, shutdown;
 	unsigned char frame[LOW * LOW];
 	long t;
@@ -412,7 +413,7 @@ static void activate_done(GObject *src, GAsyncResult *res, gpointer data)
 	} else if (j->name) {
 		status("%s is now used for booting and shutting down", j->name);
 	} else {
-		status("The built-in boot animation is used again");
+		status("The default boot animation is used again");
 	}
 	g_free(out);
 	reload();
@@ -448,6 +449,13 @@ static void set_active(Anim *a)
 	j->name = a ? g_strdup(a->name) : NULL;
 	g_subprocess_communicate_utf8_async(p, NULL, NULL, activate_done, j);
 	g_object_unref(p);
+}
+
+static gboolean in_use(Anim *a)
+{
+	if (a->is_default)
+		return !active_name || !strcmp(active_name, a->name);
+	return active_name && !strcmp(active_name, a->name);
 }
 
 static Anim *button_anim(GtkWidget *b)
@@ -499,7 +507,7 @@ static void on_activate(GtkButton *b, gpointer d)
 {
 	(void)d;
 	Anim *a = button_anim(GTK_WIDGET(b));
-	if (active_name && !strcmp(active_name, a->name))
+	if (a->is_default || in_use(a))
 		set_active(NULL);
 	else if (!a->ok)
 		status("Build %s before using it", a->name);
@@ -536,10 +544,10 @@ static GtkWidget *tile_button(const char *label, Anim *a, GCallback cb)
 
 static void add_tile(Anim *a)
 {
-	gboolean active = active_name && !strcmp(active_name, a->name);
+	gboolean active = in_use(a);
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4), *row;
 	char *name = g_markup_escape_text(a->name, -1);
-	char *markup = g_strdup_printf("<b>%s</b>%s%s", name, a->system ? "  (built-in)" : "",
+	char *markup = g_strdup_printf("<b>%s</b>%s%s", name, a->is_default ? "  (default)" : a->system ? "  (built-in)" : "",
 				       active ? "  <span foreground='#f7768e'>● in use</span>" : "");
 	g_free(name);
 	a->area = gtk_drawing_area_new();
@@ -563,16 +571,19 @@ static void add_tile(Anim *a)
 		if (!a->system)
 			gtk_box_append(GTK_BOX(row), tile_button("Build", a, G_CALLBACK(on_build)));
 		gtk_box_append(GTK_BOX(row), tile_button("Duplicate", a, G_CALLBACK(on_duplicate)));
-		gtk_box_append(GTK_BOX(row), tile_button(active ? "Stop using" : "Use", a, G_CALLBACK(on_activate)));
+		GtkWidget *use = tile_button(active ? (a->is_default ? "In use" : "Stop using") : "Use", a, G_CALLBACK(on_activate));
+		gtk_widget_set_sensitive(use, !(active && a->is_default));
+		gtk_box_append(GTK_BOX(row), use);
 		gtk_box_append(GTK_BOX(box), row);
 	}
 	gtk_flow_box_append(GTK_FLOW_BOX(flow), box);
 	anim_start(a);
 }
 
-static void add_anim(const char *name, const char *dir, const char *exe, gboolean system)
+static void add_anim(const char *name, const char *dir, const char *exe, gboolean system, gboolean is_default)
 {
 	Anim *a = g_new0(Anim, 1);
+	a->is_default = is_default;
 	a->name = g_strdup(name);
 	a->dir = g_strdup(dir);
 	a->exe = g_strdup(exe);
@@ -593,6 +604,11 @@ static void scan(const char *parent, gboolean system)
 		g_ptr_array_add(names, g_strdup(name));
 	g_dir_close(d);
 	g_ptr_array_sort(names, (GCompareFunc)g_strcmp0);
+	for (guint i = 1; system && i < names->len; i++)
+		if (!strcmp(g_ptr_array_index(names, i), DEFAULT_ANIMATION)) {
+			gpointer first = g_ptr_array_steal_index(names, i);
+			g_ptr_array_insert(names, 0, first);
+		}
 	for (guint i = 0; i < names->len; i++) {
 		name = g_ptr_array_index(names, i);
 		char *dir = g_build_filename(parent, name, NULL), *src = g_build_filename(dir, "anim.c", NULL);
@@ -602,7 +618,7 @@ static void scan(const char *parent, gboolean system)
 				g_free(exe);
 				exe = g_build_filename(LIBDIR, "animations", name, NULL);
 			}
-			add_anim(name, dir, exe, system && access(dir, W_OK) != 0);
+			add_anim(name, dir, exe, system && access(dir, W_OK) != 0, system && !strcmp(name, DEFAULT_ANIMATION));
 			g_free(exe);
 		}
 		g_free(dir);
@@ -626,7 +642,7 @@ static void reload(void)
 	if (preview_dir) {
 		char *dir = g_canonicalize_filename(preview_dir, NULL), *name = g_path_get_basename(dir),
 		     *exe = g_build_filename(dir, "anim", NULL);
-		add_anim(name, dir, exe, FALSE);
+		add_anim(name, dir, exe, FALSE, FALSE);
 		g_free(dir);
 		g_free(name);
 		g_free(exe);

@@ -1,4 +1,5 @@
 #include <math.h>
+#include <stddef.h>
 #include "anim.h"
 
 #define SEGMENTS 16
@@ -88,30 +89,62 @@ void boot_frame(long tick)
 	draw_hat(angle);
 }
 
+static void disc(double cx, double cy, double r, unsigned char ink)
+{
+	for (int y = (int)floor(cy - r); y <= (int)ceil(cy + r); y++)
+		for (int x = (int)floor(cx - r); x <= (int)ceil(cx + r); x++)
+			if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r)
+				plot(x, y, ink);
+}
+
 void shutdown_frame(long tick)
 {
+	static const double hx = 40, hy = 22;
 	double t = tick / (2 * TICKS_PER_SECOND);
 	clear(INK_BG);
-	if (t < 1) {
-		double angle = 2 * M_PI * (t * 2.5 + t * t * 3);
-		tilt = 0.36 + 0.3 * t;
-		size = 25 * (1 - t) * (1 - t);
-		lift = 40 * t * t;
-		if (size >= 1)
-			draw_hat(angle);
+	for (int i = 0; i < 18; i++) {
+		int x = (i * 37 + 11) % LOW, y = (i * 23 + 5) % LOW;
+		if (t < 0.4 + (i % 5) * 0.08)
+			plot(x, y, INK_GRAY);
 	}
-	for (int i = 0; i < 6; i++) {
-		double life = t * 1.6 - i * 0.12;
-		if (life <= 0 || life >= 1)
-			continue;
-		int x = LOW / 2 + (int)lround(sin(i * 2.4) * 14 * life), y = LOW / 2 - (int)lround(life * 30) + i * 3;
-		unsigned char ink = life < 0.6 ? INK_HIGHLIGHT : INK_HAT;
-		plot(x, y, ink);
-		if (life < 0.4) {
-			plot(x - 1, y, ink);
-			plot(x + 1, y, ink);
-			plot(x, y - 1, ink);
-			plot(x, y + 1, ink);
+	if (t < 0.35) {
+		double k = t / 0.35;
+		tilt = 0.36 + 0.4 * k;
+		size = 25 * (1 - k) * (1 - k);
+		lift = (LOW / 2 - hy) * k;
+		if (size >= 1) {
+			double shift = (hx - LOW / 2) * k;
+			draw_hat(2 * M_PI * (k * 2 + k * k * 2));
+			if (shift > 0.5) {
+				for (int y = 0; y < LOW; y++)
+					for (int x = LOW - 1; x >= 0; x--) {
+						int from = x - (int)lround(shift);
+						low[y * LOW + x] = from >= 0 ? low[y * LOW + from] : INK_BG;
+					}
+			}
 		}
+	}
+	if (t >= 0.25 && t < 0.62) {
+		double r = 0.5 + 2.5 * (t - 0.25) / 0.37;
+		disc(hx, hy, r + 1, INK_HIGHLIGHT);
+		disc(hx, hy, r, INK_LIGHT);
+	}
+	if (t >= 0.6) {
+		double b = (t - 0.6) / 0.4, flash = b < 0.25 ? 1 : 1 - (b - 0.25) / 0.75;
+		for (int x = 0; x < LOW; x++) {
+			double v = flash * exp(-fabs(x - hx) / 14);
+			if (v > 0.12)
+				plot(x, (int)hy, v > 0.6 ? INK_LIGHT : v > 0.3 ? INK_HIGHLIGHT : INK_HAT);
+		}
+		disc(hx, hy, (1.5 + 6 * sqrt(b)) * flash, INK_HIGHLIGHT);
+		disc(hx, hy, (1 + 3 * sqrt(b)) * flash, INK_LIGHT);
+		static const struct {
+			double along, r;
+			unsigned char ink;
+		} ghosts[] = { { 0.6, 1.5, INK_TEAL }, { 1.3, 3, INK_HIGHLIGHT }, { 1.8, 1, INK_TEAL } };
+		for (size_t g = 0; g < sizeof(ghosts) / sizeof(ghosts[0]); g++)
+			if (flash > 0.2)
+				disc(hx + (LOW / 2 - hx) * ghosts[g].along, hy + (LOW / 2 - hy) * ghosts[g].along,
+				     ghosts[g].r * flash, ghosts[g].ink);
 	}
 }
