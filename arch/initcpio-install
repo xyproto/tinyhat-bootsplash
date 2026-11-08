@@ -1,0 +1,16 @@
+#!/bin/bash
+
+build() {
+    add_binary /usr/bin/tinyhat-splash
+    if [[ -x /var/lib/tinyhat-bootsplash/active ]]; then
+        add_binary /var/lib/tinyhat-bootsplash/active /usr/lib/tinyhat-bootsplash/active
+    fi
+    add_runscript
+}
+
+help() {
+    cat <<HELPEOF
+Shows the Tiny Hat boot splash, or the animation chosen in Boot Animations,
+while booting. Add tinyhat-bootsplash after kms in HOOKS, and boot with "quiet".
+HELPEOF
+}

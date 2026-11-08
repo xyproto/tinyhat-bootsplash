@@ -1,0 +1,3 @@
+-Wall
+-I../../runtime
+-I/usr/share/tinyhat-bootsplash/runtime

@@ -1,0 +1,49 @@
+#!/bin/sh
+set -u
+state=${TINYHAT_BOOTSPLASH_STATE:-/var/lib/tinyhat-bootsplash}
+hooks=/etc/tinyhat-bootsplash/activate.d
+usage() {
+	echo "usage: tinyhat-bootsplash-activate ANIMATION NAME | --off" >&2
+	exit 2
+}
+[ $# -ge 1 ] || usage
+if [ "$(id -u)" != 0 ] && [ -z "${TINYHAT_BOOTSPLASH_STATE-}" ]; then
+	self=$(command -v "$0" 2>/dev/null || echo "$0")
+	case $self in /*) ;; *) self=$(pwd)/$self ;; esac
+	if [ "$1" != --off ]; then
+		exe=$(realpath -e -- "$1") || exit 1
+		shift
+		set -- "$exe" "$@"
+	fi
+	for s in doas pkexec sudo; do
+		command -v "$s" >/dev/null 2>&1 && exec "$s" "$self" "$@"
+	done
+	echo "tinyhat-bootsplash-activate: needs root, and doas, pkexec or sudo was not found" >&2
+	exit 1
+fi
+if [ "$1" = --off ]; then
+	rm -f "$state/active" "$state/active-name"
+	name=
+else
+	[ $# -eq 2 ] || usage
+	[ -f "$1" ] && [ -x "$1" ] || {
+		echo "tinyhat-bootsplash-activate: $1 is not a built animation" >&2
+		exit 1
+	}
+	got=$(head -c 4 /dev/zero | timeout 3 "$1" 2>/dev/null | head -c 4096 | wc -c)
+	[ "$got" = 4096 ] || {
+		echo "tinyhat-bootsplash-activate: $1 did not draw a frame within 3 seconds" >&2
+		exit 1
+	}
+	mkdir -p "$state"
+	install -m755 "$1" "$state/active.tmp" && mv -f "$state/active.tmp" "$state/active" || exit 1
+	printf '%s\n' "$2" >"$state/active-name"
+	name=$2
+fi
+for d in /usr/lib/tinyhat-bootsplash/activate.d "$hooks"; do
+	[ -d "$d" ] || continue
+	for h in "$d"/*; do
+		[ -f "$h" ] && [ -x "$h" ] && "$h" "$state/active" "$name"
+	done
+done
+exit 0

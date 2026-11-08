@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Boot Animations
+Icon=preferences-desktop-theme
+Comment=Choose, create and edit the animations shown while booting and shutting down
+Exec=tinyhat-boot-animations
+Terminal=false
+Categories=Settings;DesktopSettings;Development;

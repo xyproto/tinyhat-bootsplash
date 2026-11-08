@@ -1,0 +1,5 @@
+build/
+tinyhat-splash
+tinyhat-boot-animations
+animations/*/anim
+templates/*/anim

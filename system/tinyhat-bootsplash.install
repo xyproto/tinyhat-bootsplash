@@ -1,0 +1,9 @@
+post_install() {
+  cat <<'MSG'
+To show the boot splash:
+  1. Add tinyhat-bootsplash after kms in HOOKS in /etc/mkinitcpio.conf, then run: mkinitcpio -P
+  2. Add "quiet" to the kernel command line
+  3. Run: systemctl enable tinyhat-bootsplash-quit.service tinyhat-bootsplash-shutdown.service
+Choose or create animations with Boot Animations. Disable Plymouth if it is installed.
+MSG
+}

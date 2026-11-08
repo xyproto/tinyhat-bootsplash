@@ -1,0 +1,11 @@
+[Unit]
+Description=Stop the Tiny Hat boot splash
+After=systemd-user-sessions.service
+Before=display-manager.service getty@tty1.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '[ ! -p /run/tinyhat-splash ] || timeout 2 sh -c "echo quit >/run/tinyhat-splash"; exit 0'
+
+[Install]
+WantedBy=multi-user.target

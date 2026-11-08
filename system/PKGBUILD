@@ -1,0 +1,25 @@
+# Maintainer: Alexander F. Rødseth <xyproto@archlinux.org>
+
+pkgname=tinyhat-bootsplash
+pkgver=1.0.0
+pkgrel=1
+pkgdesc='Boot and shutdown animations written in C, with a gallery for choosing and editing them, as a small alternative to Plymouth'
+arch=(x86_64)
+url='https://github.com/xyproto/tinyhat-bootsplash'
+license=(BSD-3-Clause)
+depends=(glibc gtk4)
+makedepends=(git kbd python)
+optdepends=('base-devel: building new animations in Boot Animations'
+            'orbiton: editing animations from Boot Animations'
+            'polkit: activating animations without doas or sudo')
+install=tinyhat-bootsplash.install
+source=("git+$url#tag=v$pkgver")
+b2sums=('SKIP')
+
+build() {
+  make -C $pkgname
+}
+
+package() {
+  make -C $pkgname DESTDIR="$pkgdir" PREFIX=/usr install install-arch
+}

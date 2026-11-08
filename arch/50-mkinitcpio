@@ -1,0 +1,4 @@
+#!/bin/sh
+command -v mkinitcpio >/dev/null 2>&1 || exit 0
+grep -Eqs '^[[:space:]]*HOOKS=.*[( ]tinyhat-bootsplash[ )]' /etc/mkinitcpio.conf /etc/mkinitcpio.conf.d/*.conf || exit 0
+exec mkinitcpio -P
