@@ -1,10 +1,22 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include "anim.h"
 
 int main(int argc, char **argv)
 {
+	if (argc < 2) {
+		char dir[4096];
+		ssize_t n = readlink("/proc/self/exe", dir, sizeof(dir) - 1);
+		if (n > 0) {
+			dir[n] = '\0';
+			*strrchr(dir, '/') = '\0';
+			execlp("tinyhat-boot-animations", "tinyhat-boot-animations", "--preview", dir, (char *)NULL);
+		}
+		fprintf(stderr, "Preview this animation with: tinyhat-boot-animations --preview DIRECTORY\n");
+		return 1;
+	}
 	int shutdown_mode = argc > 1 && !strcmp(argv[1], "shutdown");
 	int out = dup(1);
 	int32_t tick;

@@ -49,6 +49,7 @@ install-arch:
 	install -Dm644 arch/initcpio-hook "$(DESTDIR)$(INITCPIODIR)/hooks/tinyhat-bootsplash"
 	install -Dm644 arch/tinyhat-bootsplash-quit.service "$(DESTDIR)$(SYSTEMDDIR)/tinyhat-bootsplash-quit.service"
 	install -Dm644 arch/tinyhat-bootsplash-shutdown.service "$(DESTDIR)$(SYSTEMDDIR)/tinyhat-bootsplash-shutdown.service"
+	install -Dm755 arch/system-shutdown "$(DESTDIR)$(PREFIX)/lib/systemd/system-shutdown/tinyhat-bootsplash"
 	install -Dm755 arch/50-mkinitcpio "$(DESTDIR)$(LIBDIR)/activate.d/50-mkinitcpio"
 
 clean:
